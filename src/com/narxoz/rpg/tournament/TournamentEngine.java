@@ -18,6 +18,7 @@ public class TournamentEngine {
     private final ArenaFighter hero;
     private final ArenaOpponent opponent;
     private Random random = new Random(1L);
+    private DefenseHandler defenseChain;
 
     public TournamentEngine(ArenaFighter hero, ArenaOpponent opponent) {
         this.hero = hero;
@@ -33,36 +34,82 @@ public class TournamentEngine {
         TournamentResult result = new TournamentResult();
         int round = 0;
         final int maxRounds = 20;
-
-        // TODO: Build the defense chain using fluent setNext():
-        //   DodgeHandler -> BlockHandler -> ArmorHandler -> HpHandler
-        // Hint: use hero stats for each handler's parameters.
-        //   new DodgeHandler(hero.getDodgeChance(), <seed>)
-        //   new BlockHandler(hero.getBlockRating() / 100.0)   <-- note the int-to-double conversion
-        //   new ArmorHandler(hero.getArmorValue())
-        //   new HpHandler()
-        // Chain them: dodge.setNext(block).setNext(armor).setNext(hp)
-
-        // TODO: Create an ActionQueue (the invoker).
-
-        // TODO: Simulate rounds until hero or opponent is defeated (or maxRounds is reached).
-        // Each round should:
-        //   1) Increment round counter.
-        //   2) Enqueue hero actions: AttackCommand, HealCommand, DefendCommand.
-        //      Use hero.getAttackPower() for AttackCommand, a fixed heal amount for HealCommand,
-        //      and a small dodge boost for DefendCommand.
-        //   3) Print the queued commands using actionQueue.getCommandDescriptions().
-        //   4) Call actionQueue.executeAll() to run all hero actions.
-        //   5) If the opponent is still alive: have the opponent attack the hero.
-        //      Route the attack through the defense chain: defenseChain.handle(opponent.getAttackPower(), hero)
-        //      Do NOT call hero.takeDamage() directly here.
-        //   6) Log round results (e.g. "[Round N] Opponent HP: X | Hero HP: Y").
-        //   7) Add the log line to result.addLine(...).
-
-        // TODO: After the loop, determine the winner.
-        //   result.setWinner(hero.isAlive() ? hero.getName() : opponent.getName());
-        result.setWinner("TODO");
+        
+        result.addLine("🏆 TOURNAMENT START: " + hero.getName() + " vs " + opponent.getName());
+        result.addLine("Initial Stats:");
+        result.addLine("  Hero: " + hero.getStatus());
+        result.addLine("  Opponent: " + opponent.getStatus());
+        
+        DefenseHandler dodge = new DodgeHandler(hero.getDodgeChance(), random.nextLong());
+        DefenseHandler block = new BlockHandler(hero.getBlockRating() / 100.0);
+        DefenseHandler armor = new ArmorHandler(hero.getArmorValue());
+        DefenseHandler hp = new HpHandler();
+        
+        dodge.setNext(block).setNext(armor).setNext(hp);
+        defenseChain = dodge;
+        result.addLine("\n✅ Defense chain built: Dodge → Block → Armor → HP");
+        
+        ActionQueue actionQueue = new ActionQueue();
+        
+        while (hero.isAlive() && opponent.isAlive() && round < maxRounds) {
+            round++;
+            result.addLine("\n═══════════════════════════════════════");
+            result.addLine("ROUND " + round);
+            result.addLine("═══════════════════════════════════════");
+            
+            result.addLine("\n📋 Planning phase:");
+            actionQueue.enqueue(new AttackCommand(opponent, hero.getAttackPower()));
+            
+            if (hero.getHealPotions() > 0 && hero.getHealth() < hero.getMaxHealth() * 0.5) {
+                actionQueue.enqueue(new HealCommand(hero, 30));
+            }
+            
+            actionQueue.enqueue(new DefendCommand(hero, 0.1));
+            
+            result.addLine("\n📋 Queued actions:");
+            for (String desc : actionQueue.getCommandDescriptions()) {
+                result.addLine("  • " + desc);
+            }
+            
+            result.addLine("\n⚡ Execution phase:");
+            actionQueue.executeAll();
+            
+            if (!opponent.isAlive()) {
+                result.addLine("\n💀 " + opponent.getName() + " has been defeated!");
+                break;
+            }
+            
+            result.addLine("\n🔴 Opponent's turn:");
+            int opponentDamage = opponent.getAttackPower();
+            result.addLine("  " + opponent.getName() + " attacks for " + opponentDamage + " damage!");
+            result.addLine("\n🛡️ Defense chain processing:");
+            defenseChain.handle(opponentDamage, hero);
+            
+            result.addLine("\n📊 Round " + round + " summary:");
+            result.addLine("  Hero HP: " + hero.getHealth() + "/" + hero.getMaxHealth());
+            result.addLine("  Opponent HP: " + opponent.getHealth() + "/" + opponent.getHealth());
+        }
+        
+        String winner;
+        if (!hero.isAlive()) {
+            winner = opponent.getName();
+            result.addLine("\n💀 " + hero.getName() + " has been defeated!");
+        } else if (!opponent.isAlive()) {
+            winner = hero.getName();
+            result.addLine("\n🏆 " + hero.getName() + " emerges victorious!");
+        } else {
+            winner = "Draw (max rounds reached)";
+            result.addLine("\n⏰ Tournament ended due to max rounds limit!");
+        }
+        
+        result.setWinner(winner);
         result.setRounds(round);
+        
+        result.addLine("\n═══════════════════════════════════════");
+        result.addLine("🏆 TOURNAMENT END");
+        result.addLine("Winner: " + winner);
+        result.addLine("Total rounds: " + round);
+        
         return result;
     }
 }
